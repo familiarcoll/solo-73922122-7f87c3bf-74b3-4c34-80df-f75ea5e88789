@@ -3,11 +3,33 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: reconcile-api:1.0.0
+    image: reconcile-api:1.1.0
     container_name: reconcile-api
+    # tini 作为 PID 1，及时回收被终止的核对子进程，避免僵尸进程。
+    init: true
     ports:
       - "8000:8000"
     restart: unless-stopped
+    environment:
+      # 超时从取得名额起计时，默认 5 秒；可通过宿主机环境变量覆盖。
+      RECONCILE_TIMEOUT_SECONDS: "${RECONCILE_TIMEOUT_SECONDS:-5}"
+      # 两个工作进程共享这两个全局名额；满额立即 503，不排队。
+      RECONCILE_SLOTS: "2"
+      RECONCILE_SLOT_DIR: "/tmp/reconcile-slots"
+      # 仅用于演示超时/断连：让子进程额外计算 N 秒，默认 0（不影响正常服务）。
+      RECONCILE_DEMO_DELAY_SECONDS: "${RECONCILE_DEMO_DELAY_SECONDS:-0}"
+    # 显式声明两个 API 工作进程（与 Dockerfile 的 CMD 一致，便于在此调整）。
+    command:
+      [
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--workers",
+        "2",
+      ]
     healthcheck:
       test:
         [
